@@ -1032,7 +1032,7 @@
           <div class="customer-detail-name" id="cdName">Cliente</div>
           <div class="customer-detail-sub" id="cdMeta">—</div>
         </div>
-        <button id="cdClose" class="customer-detail-close" aria-label="Cerrar detalle">×</button>
+          <button id="cdClose" class="customer-detail-close" aria-label="Cerrar detalle">×</button>
       </div>
 
       <div class="customer-detail-kpis">
@@ -1065,8 +1065,40 @@
     const COUNTRY_FILTER = "VE";
     const CURRENCY = "VES";
 
-    // 🔁 TASA DE CONVERSIÓN COP → VES (ajusta este valor según la tasa actual)
-    const COP_TO_VES = 0.00085;
+    // 🔁 TASA DE CONVERSIÓN COP → VES
+    // Fallback: ajustada para que 20.000 COP = Bs.S 1.278,02 ⇒ 0.063901
+    let COP_TO_VES = 0.063901;
+    try {
+      const fxRaw = localStorage.getItem("mytems_mc_fx_v1");
+      if (fxRaw) {
+        const fx = JSON.parse(fxRaw);
+        if (fx && typeof fx === "object") {
+          let maybe = null;
+          // Intentamos varios formatos posibles
+          if (fx.COP && typeof fx.COP === "object") {
+            maybe =
+              fx.COP.VES ||
+              fx.COP.BsS ||
+              fx.COP.bs ||
+              fx.COP["VEF"] ||
+              fx.COP["VES"] ||
+              null;
+          }
+          if (maybe == null && typeof fx.COP_VES === "number") {
+            maybe = fx.COP_VES;
+          }
+          if (maybe == null && typeof fx["COP->VES"] === "number") {
+            maybe = fx["COP->VES"];
+          }
+          if (typeof maybe === "number" && isFinite(maybe) && maybe > 0) {
+            COP_TO_VES = maybe;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("No se pudo leer mytems_mc_fx_v1, usando tasa fija:", COP_TO_VES, err);
+    }
+    console.log("Tasa COP→VES usada en Analytics:", COP_TO_VES);
 
     // 🔗 CONFIG SHEETS
     const SHEET_ID = "1hgdNPwXGJijXfv8FlE4RUNCGl-fkoJ-qheCxfZ7pEjM";
@@ -1164,20 +1196,6 @@
 
           if (row.length >= 14) {
             // Formato NUEVO (con columna País junto al total)
-            // [0] fecha
-            // [1] cliente
-            // [2] email
-            // [3] teléfono
-            // [4] dirección
-            // [5] total
-            // [6] país
-            // [7] productos
-            // [8] cantidades
-            // [9] skus
-            // [10] método pago
-            // [11] estado financiero
-            // [12] estado de cumplimiento
-            // [13] número orden
             fechaCell      = row[0] || "";
             cliente        = row[1] || "Desconocido";
             email          = row[2] || "";
@@ -1190,20 +1208,7 @@
             metodoPago     = row[10] || "";
             numeroOrden    = row[13] || row[12] || "";
           } else if (row.length >= 13) {
-            // Formato VIEJO (como el que me mostraste, sin columna País explícita)
-            // [0] fecha
-            // [1] cliente
-            // [2] email
-            // [3] teléfono
-            // [4] dirección
-            // [5] total
-            // [6] productos
-            // [7] cantidades
-            // [8] skus
-            // [9] método pago
-            // [10] estado financiero
-            // [11] estado cumplimiento
-            // [12] número orden
+            // Formato VIEJO
             fechaCell      = row[0] || "";
             cliente        = row[1] || "Desconocido";
             email          = row[2] || "";
@@ -1216,7 +1221,7 @@
             metodoPago     = row[9] || "";
             numeroOrden    = row[12] || "";
           } else {
-            // Fallback para cualquier otro formato (intentamos algo razonable)
+            // Fallback
             fechaCell      = row[0] || "";
             cliente        = row[1] || "Desconocido";
             email          = row[2] || "";
@@ -1242,6 +1247,11 @@
           // ---- TOTAL (COP → VES) ----
           const totalCop = parseNumber(totalCell);
           const total = totalCop * COP_TO_VES;
+
+          // DEBUG ejemplo puntual
+          if (totalCop === 20000) {
+            console.log("DEBUG 20.000 COP →", total, "VES con tasa", COP_TO_VES);
+          }
 
           // ---- CIUDAD DESDE DIRECCIÓN ----
           let city = "Sin ciudad";
@@ -1582,7 +1592,8 @@
       const formatter = new Intl.NumberFormat("es-VE", {
         style: "currency",
         currency: CURRENCY,
-        maximumFractionDigits: 0
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       });
 
       const jitter = (base, factor = 0.12) =>
@@ -1682,7 +1693,8 @@
       const formatter = new Intl.NumberFormat("es-VE", {
         style: "currency",
         currency: CURRENCY,
-        maximumFractionDigits: 0
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       });
 
       const citiesArr = Array.from(agg.cityStats.entries())
@@ -1756,7 +1768,8 @@
       const formatter = new Intl.NumberFormat("es-VE", {
         style: "currency",
         currency: CURRENCY,
-        maximumFractionDigits: 0
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       });
 
       const paymentsArr = Array.from(agg.paymentStats.entries())
@@ -1835,7 +1848,8 @@
       const formatter = new Intl.NumberFormat("es-VE", {
         style: "currency",
         currency: CURRENCY,
-        maximumFractionDigits: 0
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       });
 
       if (agg.totalOrders === 0) {
@@ -1922,7 +1936,8 @@
       const formatter = new Intl.NumberFormat("es-VE", {
         style: "currency",
         currency: CURRENCY,
-        maximumFractionDigits: 0
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       });
 
       const kpiTotalOrders = document.getElementById("kpiTotalOrders");
@@ -2043,7 +2058,8 @@
       const formatter = new Intl.NumberFormat("es-VE", {
         style: "currency",
         currency: CURRENCY,
-        maximumFractionDigits: 0
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       });
 
       const customerAgg = CURRENT_AGG.customerOrders.get(customerId);
