@@ -118,7 +118,7 @@
       letter-spacing: 0.12em;
       text-transform: uppercase;
       background: linear-gradient(90deg, #ffffff, var(--accent-alt), var(--accent));
- 
+      -webkit-background-clip: text;
       color: transparent;
       text-shadow:
         0 0 6px rgba(83,255,178,0.7),
@@ -1070,7 +1070,7 @@
 
     // 🔗 CONFIG SHEETS
     const SHEET_ID = "1hgdNPwXGJijXfv8FlE4RUNCGl-fkoJ-qheCxfZ7pEjM";
-    const SHEET_RANGE = "Pedidos";
+    const SHEET_RANGE = "PedidosVe";
     const API_KEY = "AIzaSyB3df7vOH8RMvrhzbfmxLq61o51Eve9tto";
     const SHEET_URL = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(SHEET_RANGE)}?key=${API_KEY}`;
 
@@ -1122,17 +1122,19 @@
       return isNaN(num) ? 0 : num;
     }
 
-    // 🔍 Detectar si la fila corresponde a Venezuela usando Dirección y/o País
-    function isVenezuelanRow(direccion, pais) {
-      const d = String(direccion || "").toLowerCase();
-      const p = String(pais || "").toLowerCase().trim();
-
-      // Para debug: ver exactamente qué viene de la hoja
-      console.log("Fila dirección/pais:", d, "|", p);
-
-      if (d.includes("venezuela")) return true;
-      if (p.includes("venezuela")) return true;
-      if (p === "ve" || p === "vzla") return true;
+    // 🔍 Detectar si la FILA completa corresponde a Venezuela (buscando "venezuela" en cualquier columna)
+    function rowIsVenezuela(row) {
+      if (!Array.isArray(row)) return false;
+      const text = row.join(" ").toLowerCase();
+      const hasVe =
+        text.includes("venezuela") ||
+        text.includes(" vzla ") ||
+        text.includes("(ve)") ||
+        text.includes(" venezu ");
+      if (hasVe) {
+        console.log("Fila VE detectada:", row);
+        return true;
+      }
       return false;
     }
 
@@ -1148,25 +1150,87 @@
         const dataRows = rows.slice(1);
         const orders = [];
 
+        console.log("Filas totales (sin encabezado):", dataRows.length);
+
         for (const row of dataRows) {
-          if (!row || row.length < 7) continue;
+          if (!row || row.length < 5) continue;
 
-          const fechaCell      = row[0] || "";
-          const cliente        = row[1] || "Desconocido";
-          const email          = row[2] || "";
-          const telefono       = row[3] || "";
-          const direccion      = row[4] || "";
-          const totalCell      = row[5] || "0";
-          const pais           = row[6] || ""; // País en la columna al lado de total
-          const productosCell  = row[7] || "";
-          const cantidadesCell = row[8] || "";
-          const skusCell       = row[9] || "";
-          const metodoPago     = row[10] || "";
-          const numeroOrden    = row[13] || "";
+          // 🔴 Solo filas donde en ALGUNA columna aparezca "Venezuela"
+          if (!rowIsVenezuela(row)) continue;
 
-          // 🔴 Solo pedidos detectados como Venezuela
-          if (!isVenezuelanRow(direccion, pais)) continue;
+          // ---- Mapeo flexible de columnas según longitud ----
+          let fechaCell, cliente, email, telefono, direccion, totalCell,
+              productosCell, cantidadesCell, skusCell, metodoPago, numeroOrden;
 
+          if (row.length >= 14) {
+            // Formato NUEVO (con columna País junto al total)
+            // [0] fecha
+            // [1] cliente
+            // [2] email
+            // [3] teléfono
+            // [4] dirección
+            // [5] total
+            // [6] país
+            // [7] productos
+            // [8] cantidades
+            // [9] skus
+            // [10] método pago
+            // [11] estado financiero
+            // [12] estado de cumplimiento
+            // [13] número orden
+            fechaCell      = row[0] || "";
+            cliente        = row[1] || "Desconocido";
+            email          = row[2] || "";
+            telefono       = row[3] || "";
+            direccion      = row[4] || "";
+            totalCell      = row[5] || "0";
+            productosCell  = row[7] || "";
+            cantidadesCell = row[8] || "";
+            skusCell       = row[9] || "";
+            metodoPago     = row[10] || "";
+            numeroOrden    = row[13] || row[12] || "";
+          } else if (row.length >= 13) {
+            // Formato VIEJO (como el que me mostraste, sin columna País explícita)
+            // [0] fecha
+            // [1] cliente
+            // [2] email
+            // [3] teléfono
+            // [4] dirección
+            // [5] total
+            // [6] productos
+            // [7] cantidades
+            // [8] skus
+            // [9] método pago
+            // [10] estado financiero
+            // [11] estado cumplimiento
+            // [12] número orden
+            fechaCell      = row[0] || "";
+            cliente        = row[1] || "Desconocido";
+            email          = row[2] || "";
+            telefono       = row[3] || "";
+            direccion      = row[4] || "";
+            totalCell      = row[5] || "0";
+            productosCell  = row[6] || "";
+            cantidadesCell = row[7] || "";
+            skusCell       = row[8] || "";
+            metodoPago     = row[9] || "";
+            numeroOrden    = row[12] || "";
+          } else {
+            // Fallback para cualquier otro formato (intentamos algo razonable)
+            fechaCell      = row[0] || "";
+            cliente        = row[1] || "Desconocido";
+            email          = row[2] || "";
+            telefono       = row[3] || "";
+            direccion      = row[4] || "";
+            totalCell      = row[5] || "0";
+            productosCell  = row[6] || "";
+            cantidadesCell = row[7] || "";
+            skusCell       = row[8] || "";
+            metodoPago     = row[9] || "";
+            numeroOrden    = row[10] || "";
+          }
+
+          // ---- FECHA ----
           let dateStr = "";
           if (fechaCell) {
             const d = new Date(fechaCell);
@@ -1175,9 +1239,11 @@
             }
           }
 
+          // ---- TOTAL (COP → VES) ----
           const totalCop = parseNumber(totalCell);
           const total = totalCop * COP_TO_VES;
 
+          // ---- CIUDAD DESDE DIRECCIÓN ----
           let city = "Sin ciudad";
           if (direccion) {
             const parts = String(direccion).split(",");
@@ -1188,6 +1254,7 @@
             }
           }
 
+          // ---- PRODUCTOS / CANTIDADES / SKUS ----
           const names = String(productosCell)
             .split(",")
             .map(t => t.trim())
@@ -1208,8 +1275,7 @@
           });
 
           const totalQty = quantities.reduce((s, q) => s + q, 0) || names.length || 1;
-
-          const unitValueCop = totalCop / totalQty;
+          const unitValueCop = totalQty > 0 ? (totalCop / totalQty) : totalCop;
           const unitValue = unitValueCop * COP_TO_VES;
 
           const products = names.map((title, i) => {
@@ -1228,7 +1294,7 @@
           orders.push({
             orderId: numeroOrden || dateStr + "-" + Math.random().toString(36).slice(2),
             date: dateStr || new Date().toISOString().slice(0, 10),
-            country: "VE",
+            country: COUNTRY_FILTER,
             total,
             currency: CURRENCY,
             customerId,
@@ -1239,7 +1305,7 @@
           });
         }
 
-        console.log("Pedidos VE encontrados:", orders.length);
+        console.log("Pedidos VE detectados:", orders.length);
 
         if (orders.length === 0) {
           metaInfoEl.textContent = "No hay pedidos detectados como Venezuela en la hoja (Pedidos).";
@@ -1289,8 +1355,8 @@
         const dayOrders = Math.round(Math.random() * 4);
         for (let j = 0; j < dayOrders; j++) {
           const customer = customers[Math.floor(Math.random() * customers.length)];
-          const productsCount = 1 + Math.floor(Math.random() * 3);
           const products = [];
+          const productsCount = 1 + Math.floor(Math.random() * 3);
           let total = 0;
 
           for (let k = 0; k < productsCount; k++) {
@@ -2043,7 +2109,7 @@
           segmentButtons.forEach(b => b.classList.remove("active"));
           btn.classList.add("active");
           currentSegment = btn.dataset.segment;
-          renderDashboard(ordersGlobal, currentTimeframe); 
+          renderDashboard(ordersGlobal, currentTimeframe);
         });
       });
 
